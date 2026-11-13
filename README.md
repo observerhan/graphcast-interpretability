@@ -27,3 +27,15 @@ Click the Colab link below to reproduce a hurricane example from the paper:
 [Demo notebook](https://colab.research.google.com/github/theodoremacmillan/graphcast-interpretability/blob/main/hurricane_feature_demo.ipynb) in Colab 
 
 Due to Colab updating their Jax package version, you'll have to switch the runtime version to 2025.07 instead of 'Latest'. It is recommended to run the Colab on an A100 or H100 as the activation steps consume considerable GPU memory.
+
+## Train your own TopK SAE baseline
+
+The added [TopK training guide](docs/topk_training.md) and
+[Colab training notebook](notebooks/train_topk_colab.ipynb) train the existing
+`graphcast_interpretability.model.SAE` class on cached `.npy` activations.
+They include date-based validation, the AuxK training loss, metrics, and
+resumable checkpoints. GraphCast stays fixed and is not run during SAE training.
+
+Install with `pip install -e '.[training]'`, then run
+`python -m graphcast_interpretability.train_topk --help`.
+The original hurricane demo and SAE class are unchanged.

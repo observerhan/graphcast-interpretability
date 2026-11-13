@@ -15,5 +15,8 @@ dependencies = [
     "jax"
 ]
 
+[project.optional-dependencies]
+training = ["torch>=2.2"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
