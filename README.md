@@ -1,3 +1,30 @@
+# AMS691: two notebooks, from GraphCast to TopK SAE
+
+Run these in **Google Colab in your browser**, in this order. You can keep the defaults and choose **Runtime → Run all** in each notebook.
+
+| Order | Notebook | What it does | GPU |
+|---|---|---|---|
+| 1 | [Extract activations](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/simple-colab/01_extract_activations_to_drive.ipynb) | Downloads weather data, runs GraphCast, saves layer-8 activations to Drive | A100 or H100 |
+| 2 | [Train TopK SAE](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/simple-colab/02_train_topk_sae.ipynb) | Finds those activations, trains the authors' SAE class, saves weights and a loss plot | T4 or larger |
+
+Connect the **same Google Drive account** in both notebooks. Everything is saved under **My Drive → AMS691_GraphCast**. No terminal commands, local installation, manually downloaded weather files, or activation-path editing are needed.
+
+The default first run extracts four noon snapshots (August 27–30, 2021), about **320 MiB** of activations. Training uses the first three dates and validates on the last. This is a small initial experiment; nearby dates are not independent storms, and reconstruction quality alone does not establish interpretability.
+
+Notebook 1 uses the full original 0.25°/37-level GraphCast checkpoint, 40,962 mesh nodes, and the authors' step-8 post-residual hook. It prepares compatible packages automatically without a kernel restart. A standard free T4 has too little memory for that extraction setup; the notebook checks the GPU before installing. Notebook 2 needs only PyTorch and reuses the unchanged author SAE source. Training is visible in Step 5.
+
+If a session disconnects, rerun the notebook. Extraction skips validated completed files; training continues from its last completed epoch. Increase `EPOCHS` to continue training. Use a new `RUN_NAME` after changing the data or model settings.
+
+Results are in `AMS691_GraphCast/topk_runs/topk_baseline`: `best.pt`, `last.pt`, `history.csv`, `training_curve.png`, and small JSON files recording the settings, data split, and results.
+
+This branch, **simple-colab**, starts from the original `main` branch. The earlier `topk-trainer` branch is separate. Only these two new notebooks are needed for this workflow; the original files are retained below for reference.
+
+Validation: notebook structure and local synthetic training/capture checks are run during development. Full pretrained GraphCast extraction on a Colab GPU and the user's Drive still require a real Colab run.
+
+---
+
+## Original project information
+
 # GraphCast Interpretability
 
 This repository contains code and utilities accompanying the paper:
