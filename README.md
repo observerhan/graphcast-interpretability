@@ -7,19 +7,21 @@ Run these in **Google Colab in your browser**, in this order. You can keep the d
 | 1 | [Extract activations](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/simple-colab/01_extract_activations_to_drive.ipynb) | Downloads weather data, runs GraphCast, saves layer-8 activations to Drive | A100 or H100 |
 | 2 | [Train TopK SAE](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/simple-colab/02_train_topk_sae.ipynb) | Finds those activations, trains the authors' SAE class, saves weights and a loss plot | T4 or larger |
 
-Connect the **same Google Drive account** in both notebooks. Everything is saved under **My Drive → AMS691_GraphCast**. No terminal commands, local installation, manually downloaded weather files, or activation-path editing are needed.
+Connect the **same Google Drive account** in both notebooks. This experiment is saved under **My Drive → AMS691_GraphCast → monthly_2017_2018**. No terminal commands, local installation, manually downloaded weather files, or activation-path editing are needed.
 
-The default first run extracts four noon snapshots (August 27–30, 2021), about **320 MiB** of activations. Training uses the first three dates and validates on the last. This is a small initial experiment; nearby dates are not independent storms, and reconstruction quality alone does not establish interpretability.
+The defaults extract **27 snapshots at 12:00 UTC** (about **2.3 GB** of activations). The **24 training snapshots** use the 15th of every month in 2017 and 2018. We add **3 validation snapshots** on August 29, 2017, April 29, 2018, and December 29, 2018. The count is 10% of the number of training dates, rounded up. Notebook 2 checks reconstruction across those three dates after every epoch. The separate cyclone F1 evaluation will use labeled 2019–2021 storms.
+
+Notebook 1 saves the dates in `activations_layer8/dataset.json`. Notebook 2 reads only the listed snapshots and records the split in `data_split.json` so the same files can be used for KAN-SAE. To expand later, change `DAYS_OF_MONTH` to `[5, 15]` in notebook 1 (48 training dates and 5 validation dates) and choose a new `RUN_NAME` in notebook 2.
 
 Notebook 1 uses the full original 0.25°/37-level GraphCast checkpoint, 40,962 mesh nodes, and the authors' step-8 post-residual hook. It prepares compatible packages automatically without a kernel restart. A standard free T4 has too little memory for that extraction setup; the notebook checks the GPU before installing. Notebook 2 needs only PyTorch and reuses the unchanged author SAE source. Training is visible in Step 5.
 
 If a session disconnects, rerun the notebook. Extraction skips validated completed files; training continues from its last completed epoch. Increase `EPOCHS` to continue training. Use a new `RUN_NAME` after changing the data or model settings.
 
-Results are in `AMS691_GraphCast/topk_runs/topk_baseline`: `best.pt`, `last.pt`, `history.csv`, `training_curve.png`, and small JSON files recording the settings, data split, and results.
+Results are in `AMS691_GraphCast/monthly_2017_2018/topk_runs/topk_baseline`: `best.pt`, `last.pt`, `history.csv`, `training_curve.png`, and small JSON files recording the settings, data split, and results.
 
 This branch, **simple-colab**, starts from the original `main` branch. The earlier `topk-trainer` branch is separate. Only these two new notebooks are needed for this workflow; the original files are retained below for reference.
 
-Validation: notebook structure and local synthetic training/capture checks are run during development. Full pretrained GraphCast extraction on a Colab GPU and the user's Drive still require a real Colab run.
+The original four-snapshot Ida run is available in the branch history. Its activation and model folders in Drive are separate from the monthly experiment.
 
 ---
 
