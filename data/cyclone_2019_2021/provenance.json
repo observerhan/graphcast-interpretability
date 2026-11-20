@@ -1,0 +1,15 @@
+{
+  "tc_archive": "https://dataverse.harvard.edu/api/access/datafile/11212451",
+  "tc_md5": "83cc92c57da54ec1ec12e7d6fde08141",
+  "ibtracs": "https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/ibtracs.since1980.list.v04r01.csv",
+  "ibtracs_sha256": "d99fb38f6922d76e0f9245f93145d3a3f90ee3fc486aa128cce2ce23b51553b6",
+  "graphcast_commit": "39d1de436148c5658726b5a092bd2d7ef8701f2a",
+  "mesh_splits": 6,
+  "radius_fraction": 0.5999912857713345,
+  "time_convention": "last input (initialization), UTC",
+  "grid_mask": "union of the two cleaned annotator masks",
+  "mesh_mask": "1 iff all radius-linked grid cells are positive",
+  "regions": "8-connected, periodic longitude, per timestamp",
+  "ibtracs_match": "main track center falls inside a union region, nearest 0.25 degree cell; interpolation up to 6 h",
+  "split": "Feb\u2013Nov in separate calendar years; all active main-track SIDs disjoint"
+}
