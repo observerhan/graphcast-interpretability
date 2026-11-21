@@ -2,7 +2,7 @@
 
 The model is implemented in [`src/graphcast_interpretability/kan_sae.py`](../src/graphcast_interpretability/kan_sae.py). It follows the encoder and decoder equations in Minjong Cheon's [KAN-SAE paper, arXiv:2605.17493v1](https://arxiv.org/abs/2605.17493v1), Section 4.1 and Algorithm 1. The uploaded paper applies this model to SONNY; this repository adapts it to our saved GraphCast activations.
 
-This branch adds the model, loss calculation, calibration, and tests. Notebooks 01-05 still run the existing TopK workflow and keep their previous code pins. There is not yet a KAN training notebook or KAN checkpoint loader for the cyclone probes.
+Notebook 02b now trains this model on the exact activation split saved by TopK. Notebooks 04 and 05 load either model and handle signed KAN features. All six entry points pin the same source revision. See [Colab training and probing](#colab-training-and-probing) below.
 
 ## What the model calculates
 
@@ -93,7 +93,7 @@ model.renormalize_decoder_()
 
 Call `model.renormalize_decoder_()` after every optimizer step, as in the paper. It does not run automatically inside `forward()`. To encode without reconstructing, use `model.encode(batch)`; to reconstruct a chosen code, use `model.decode(code)`.
 
-The paper linearly increases lambda from `5e-5` to `1e-4` across 100 epochs using Adam with learning rate `1e-4`. The epoch schedule belongs in the upcoming trainer. These values are starting references, not tuned settings for our normalized GraphCast data and larger dictionary.
+The paper linearly increases lambda from `5e-5` to `1e-4` across 100 epochs using Adam with learning rate `1e-4`. The trainer exposes a fixed `L1_RAMP_EPOCHS` schedule; the course default is 20 epochs. These values are starting references, not tuned settings for our normalized GraphCast data and larger dictionary.
 
 ## Checkpoints and feature statistics
 
@@ -117,7 +117,7 @@ This saves the model. A resumable training checkpoint must additionally save opt
 
 `model.coefficient_alive_mask(threshold)` implements the paper's `max(abs(c_j)) >= threshold` criterion. The threshold is mandatory: the paper's fitted value `1.4021` should not be transferred automatically to our different activation scale. For activity on data, use an explicitly chosen magnitude tolerance on `abs(code)` rather than `code > 0`.
 
-## Tests and remaining integration
+## Tests
 
 ```bash
 python -m pip install -e '.[sae,test]'
@@ -126,11 +126,50 @@ python -m unittest discover -s tests -v
 
 The model tests compare spline values and derivatives with SciPy's independent `BSpline` implementation, including knots, endpoints, constant extension, and multiple degrees. They also check coefficient gradients, per-feature calibration, normalization, signed L1 loss, learning from zero initialization, a small synthetic optimization, exact checkpoint round trips, and forward/backward execution at the intended 512-by-4,096 GraphCast dimensions. These are CPU tests; they do not establish weather-feature quality or benchmark GPU training.
 
-The next integration step is a separate Colab trainer using the existing saved activations and split. The TopK model and training notebook remain the baseline. Before running KAN-SAE through notebooks 04-05, their checkpoint loading and feature handling must also be updated:
+## Colab training and probing
 
-- `cyclone_probes.open_experiment()` currently instantiates only the TopK class.
-- TopK `forward()` returns three tensors; KAN-SAE returns two and has no auxiliary reconstruction.
-- `fit_probes()` rejects negative values, and `best_cutoff()` assumes implicit zero belongs at the beginning of the sorted nonnegative values. Both need signed-feature support.
-- KAN plots need to retain the signs of feature values and use an appropriate color scale.
+Run the Colab links in the branch README in this order:
 
-Do not pass a KAN checkpoint into the current TopK notebooks or take absolute values merely to satisfy their checks. The data, splits, labels, and geographic mapping can still be reused once those integrations are made.
+1. **02b_train_kan_sae.ipynb** trains KAN-SAE. It requires the `data_split.json` from your existing `topk_runs/topk_baseline` run and checks the exact files and SHA-256 hashes. It does not regenerate GraphCast activations.
+2. **04_probe_topk_cyclones.ipynb** supports both models despite its historical filename. Its default `SAE_TYPE='kan_sae'` and blank `SAE_RUN` select `kan_baseline`. Select `topk` for `topk_baseline`; enter a custom run name if needed. Reuse the labeled activations from notebook 03.
+3. **05_plot_cyclone_features.ipynb** uses the same model settings and the probe's saved feature selection. Existing storm snapshots can be reused. KAN maps keep both signs and use a common symmetric color scale across each storm's five dates.
+
+### Training settings and resume
+
+| Setting | Course default |
+|---|---|
+| Dictionary | 4,096 features; same width as our TopK baseline |
+| Input normalization | Per-row centering and L2 normalization; same as TopK |
+| Optimizer | Adam, learning rate `1e-4`, default betas `(0.9, 0.999)` |
+| Batch size | 256 |
+| Requested training | 20 epochs |
+| L1 schedule | `5e-5` to `1e-4` over 20 epochs, then constant |
+| Calibration | Up to 50,000 uniformly sampled training rows, without replacement |
+| Best checkpoint | Lowest held-out reconstruction error, including the epoch-0 baseline |
+| Activity diagnostic | `abs(code) > 1e-6`; this is not the paper's fitted alive-coefficient threshold |
+
+Training uses `scripts/train_kan_sae.py`. It computes the initial bias from all training rows and records the calibration sample's global row indices in training-file order. The validation dates never calibrate knots or initialize the bias.
+
+Increase `EPOCHS` to extend training, leaving `L1_RAMP_EPOCHS` unchanged. The ramp is independent of the requested stopping epoch, so a resumed run follows the same schedule as an uninterrupted run. Changing data, model/trainer source, calibration settings, learning rate, batch size, or the ramp requires a new `RUN_NAME`.
+
+Every completed epoch atomically replaces `last.pt`, which includes current and best model states, optimizer state, history, split/checksums, sample indices, calibrated knots, and RNG state. It then writes `best.pt` and the human-readable outputs. If interrupted between these writes, rerunning all cells repairs the derived files from `last.pt`. An interrupted partial epoch is repeated from its beginning. The CPU resume test is exact; numerical equality across different GPU types or library versions is not promised.
+
+Outputs under `AMS691_GraphCast/monthly_2017_2018/kan_runs/kan_baseline`:
+
+- `last.pt`, `best.pt`, and `history.csv`.
+- `config.json`, `data_split.json`, `calibration.json`, and `calibration_indices.npy`.
+- `training_curve.png` and `summary.json` after the final plotting cell.
+
+The validation summary includes reconstruction error, fraction of variance unexplained relative to the training mean, L1 magnitude, signed-feature activity, and the fraction of pre-activations clamped outside the spline grid. The latter helps diagnose grid saturation. Training and L1 settings should be compared alongside cyclone F1; the current TopK and KAN runs use different sparsity mechanisms and potentially different training budgets.
+
+### Signed probes and memory
+
+`fit_probes()` uses the same balanced logistic loss and ridge penalty for both models. Dividing by the **training maximum absolute value** is numerically identical to the previous maximum scaling for nonnegative TopK features and also supports negative-only features. Coefficient signs are never discarded.
+
+Validation searches inclusive `>=` or `<=` cutoffs according to the fitted slope, with correctly ordered negative values, zero, and positive values. Quiet snapshots remain in every split. The test stage loads the saved validation winner and never refits its slope, chooses another feature, or retunes its cutoff.
+
+KAN codes may be dense even with an L1 penalty. Exact float32 fit and validation codes therefore use a temporary column-contiguous file on Colab's local disk, not an all-features sparse matrix in RAM. For the 4,096-feature course run, fitting needs about 8.1 GB of local disk and validation about 5.4 GB. Each cache is released before the next split. The `all_guarded` cohort needs more disk; the encoder checks available space first. Test evaluation keeps only the selected feature. No magnitude threshold is applied to probe inputs to make them artificially sparse.
+
+Probe outputs remain under `cyclones_2019_2021/<cohort>/probe_runs/<run>_<checkpoint-hash>/`. Run names and checkpoint hashes separate TopK and KAN results. Old TopK checkpoints and selections retain their identity format. KAN selections additionally record `model_type='kan_sae'` and `probe_version=2`.
+
+The workflow tests cover uninterrupted/resumed training equivalence, artifact repair, reference-data changes, negative-value cutoff searches against exhaustive results, dense/sparse probe agreement, legacy checkpoint loading, and signed feature encoding. Full training on real GraphCast activations and GPU performance still require a Colab execution.

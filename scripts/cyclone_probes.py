@@ -1,6 +1,8 @@
 """Fit one balanced logistic probe per frozen SAE feature and select on held-out storms."""
 import csv
 import json
+import shutil
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -11,12 +13,41 @@ from tqdm.auto import tqdm
 
 from cyclone_data import activation_path, read_labels, read_samples, sha256, write_json
 
-RIDGE = 1e-4  # on the slope after division by the feature's training maximum
+RIDGE = 1e-4  # on the slope after division by the training maximum absolute value
+
+
+class DenseFeatureMatrix:
+    """Column-contiguous float32 storage for dense KAN codes on local disk."""
+    def __init__(self, shape, cache_dir=None):
+        if cache_dir is not None:
+            Path(cache_dir).mkdir(parents=True, exist_ok=True)
+        self._directory = tempfile.TemporaryDirectory(prefix="kan_features_", dir=cache_dir)
+        directory = Path(self._directory.name)
+        required = int(np.prod(shape)) * np.dtype(np.float32).itemsize
+        if shutil.disk_usage(directory).free < required + 64 * 1024**2:
+            self._directory.cleanup()
+            raise ValueError(f"KAN feature storage needs {required / 1e9:.2f} GB of free local disk.")
+        self.array = np.lib.format.open_memmap(directory / "features.npy", mode="w+",
+                                             dtype=np.float32, shape=shape, fortran_order=True)
+        self.shape = shape
+
+    def close(self):
+        if self.array is not None:
+            self.array.flush()
+            self.array._mmap.close()
+            self.array = None
+        self._directory.cleanup()
+
+
+def release_features(X):
+    """Release a role's temporary disk cache after fitting or scoring."""
+    if isinstance(X, DenseFeatureMatrix):
+        X.close()
 
 
 def open_experiment(root, data_dir, cohort, checkpoint_path):
     import torch
-    from graphcast_interpretability.model import SAE
+    from sae_checkpoint import load_model
 
     manifest_path = root / cohort / "dataset.json"
     if not manifest_path.is_file():
@@ -31,7 +62,7 @@ def open_experiment(root, data_dir, cohort, checkpoint_path):
         raise ValueError("Mesh label bundle does not match notebook 03.")
     labels = read_labels(label_path, rows)
     if not checkpoint_path.is_file():
-        raise FileNotFoundError(f"Notebook 02's best.pt was expected at {checkpoint_path}. Set SAE_RUN to your run name.")
+        raise FileNotFoundError(f"A trained SAE best.pt was expected at {checkpoint_path}. Check SAE_TYPE and SAE_RUN.")
     training_split = json.loads((checkpoint_path.parent / "data_split.json").read_text())
     if manifest["source"] != training_split["source"]:
         raise ValueError("GraphCast layer, hook, model or source differs from notebook 02.")
@@ -42,26 +73,52 @@ def open_experiment(root, data_dir, cohort, checkpoint_path):
     if (saved["data_signature"] != training_split["data_signature"] or
             set(saved["validation_dates"]) != set(training_split["validation_dates"])):
         raise ValueError("The checkpoint and data_split.json are from different training runs.")
+    if saved.get("model_type") == "kan_sae" and saved.get("data_split") != training_split:
+        raise ValueError("The KAN checkpoint's recorded split differs from data_split.json.")
     cfg = saved["config"]
     if cfg["d_in"] != manifest["source"]["shape"][1]:
         raise ValueError("SAE input width does not match the GraphCast embedding.")
-    model = SAE(d_in=cfg["d_in"], latent=cfg["latent"], k_active=cfg["k"],
-                k_aux=cfg["k_aux"], dead_window=cfg["dead_window"])
-    model.load_state_dict(saved["model_state"], strict=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = load_model(saved, device)
     model.requires_grad_(False).eval().to(device)
     identity = dict(checkpoint_sha256=sha256(checkpoint_path),
-                    checkpoint_epoch=int(saved["epoch"]), latent=cfg["latent"], k=cfg["k"],
+                    checkpoint_epoch=int(saved["epoch"]), latent=cfg["latent"], k=cfg.get("k"),
                     cohort=cohort, dataset_manifest_sha256=sha256(manifest_path), ridge=RIDGE)
+    # Keep old TopK selection identities usable; KAN records its different type.
+    if saved.get("model_type") == "kan_sae":
+        identity.update(model_type="kan_sae", probe_version=2)
     return model, device, manifest, labels, identity
 
 
-def encode_split(role, root, manifest, labels, model, device, batch_size=1024):
-    """Keep only nonzero post-TopK coefficients. Row order is time, then mesh node."""
+def encode_split(role, root, manifest, labels, model, device, batch_size=256, cache_dir=None,
+                 selected_feature=None):
+    """Keep exact signed codes. KAN uses local disk; TopK uses sparse RAM storage."""
     import torch
+    from sae_checkpoint import feature_codes, model_type
 
     matrices, ys, centers = [], [], []
-    for sample in tqdm([r for r in manifest["samples"] if r["split"] == role], desc=f"Encoding {role}"):
+    samples = [r for r in manifest["samples"] if r["split"] == role]
+    if not samples or batch_size < 1:
+        raise ValueError("Choose a nonempty split and positive batch size.")
+    dense = None
+    if model_type(model) == "kan_sae" and selected_feature is None:
+        shape = (len(samples) * manifest["source"]["shape"][0], model.latent)
+        dense = DenseFeatureMatrix(shape, cache_dir)
+        print(f"Encoding signed KAN features to {np.prod(shape) * 4 / 1e9:.2f} GB of local disk.")
+    try:
+        return _encode_samples(samples, root, manifest, labels, model, device,
+                               batch_size, dense, feature_codes, matrices, ys, centers, selected_feature)
+    except BaseException:
+        if dense is not None:
+            dense.close()
+        raise
+
+
+def _encode_samples(samples, root, manifest, labels, model, device, batch_size,
+                    dense, feature_codes, matrices, ys, centers, selected_feature):
+    import torch
+    offset = 0
+    for sample in tqdm(samples, desc="Encoding features"):
         center = sample["center"]
         path = activation_path(root, center)
         if sha256(path) != manifest["completed"][center]:
@@ -73,17 +130,32 @@ def encode_split(role, root, manifest, labels, model, device, batch_size=1024):
         with torch.inference_mode():
             for start in range(0, len(arr), batch_size):
                 x = torch.from_numpy(np.array(arr[start:start + batch_size], copy=True)).to(device)
-                _, code, _ = model(x)  # includes notebook 02's per-node centering, L2 norm and TopK
+                code = feature_codes(model, x)
                 if not torch.isfinite(code).all():
                     raise ValueError(f"Non-finite feature in {center}")
+                if selected_feature is not None:
+                    if not 0 <= selected_feature < code.shape[1]:
+                        raise ValueError("Selected feature is outside the dictionary.")
+                    values = code[:, selected_feature]
+                    i = torch.where(values != 0)[0]
+                    blocks.append(sparse.csr_matrix((values[i].cpu().numpy(),
+                                   (i.cpu().numpy(), np.full(len(i), selected_feature))), shape=tuple(code.shape)))
+                    continue
+                if dense is not None:
+                    dense.array[offset + start:offset + start + len(x)] = code.cpu().numpy()
+                    continue
                 i, j = torch.where(code != 0)
                 blocks.append(sparse.csr_matrix((code[i, j].cpu().numpy(),
                                                  (i.cpu().numpy(), j.cpu().numpy())),
                                                 shape=tuple(code.shape)))
-        matrices.append(sparse.vstack(blocks, format="csr"))
+        if dense is None:
+            matrices.append(sparse.vstack(blocks, format="csr"))
+        offset += len(arr)
         ys.append(labels[center])
         centers.append(center)
-    X = sparse.vstack(matrices, format="csc")
+    X = dense if dense is not None else sparse.vstack(matrices, format="csc")
+    if dense is not None:
+        dense.array.flush()
     y = np.concatenate(ys)
     if not np.any(y) or np.all(y):
         raise ValueError(f"{role} needs both cyclone and background nodes.")
@@ -91,6 +163,8 @@ def encode_split(role, root, manifest, labels, model, device, batch_size=1024):
 
 
 def column(X, j):
+    if isinstance(X, DenseFeatureMatrix):
+        return None, np.asarray(X.array[:, j])
     lo, hi = X.indptr[j:j + 2]
     return X.indices[lo:hi], X.data[lo:hi]
 
@@ -99,15 +173,19 @@ def fit_probes(X, y):
     """Each fit node contributes. Implicit zero inputs are aggregated by class."""
     n1 = int(y.sum())
     n0 = len(y) - n1
+    if not n1 or not n0:
+        raise ValueError("Probe fitting requires both classes.")
     weights = np.zeros((X.shape[1], 2), dtype=np.float64)  # slope per raw unit, intercept
     for j in tqdm(range(X.shape[1]), desc="Fitting single-feature probes"):
         rows, value = column(X, j)
         if not len(value) or (len(value) == len(y) and value.min() == value.max()):
             continue
-        scale = float(value.max())
-        if scale <= 0 or np.any(value < 0):
-            raise ValueError("Expected nonnegative post-ReLU TopK codes.")
-        pos = y[rows]
+        if not np.isfinite(value).all():
+            raise ValueError("Feature values must be finite.")
+        scale = float(np.abs(value).max())
+        if scale == 0:
+            continue
+        pos = y if rows is None else y[rows]
         p = int(pos.sum())
         z = np.r_[value.astype(np.float64) / scale, 0., 0.]
         target = np.r_[pos, True, False].astype(np.float64)
@@ -135,9 +213,15 @@ def best_cutoff(value, pos, n, n1, slope):
     levels, starts, sizes = np.unique(value[order], return_index=True, return_counts=True)
     hits = np.add.reduceat(pos[order].astype(np.int64), starts) if len(value) else np.empty(0, dtype=np.int64)
     if n > len(value):
-        levels = np.r_[np.float32(0), levels]
-        sizes = np.r_[n - len(value), sizes]
-        hits = np.r_[n1 - int(pos.sum()), hits]
+        zero = np.searchsorted(levels, 0)
+        count, positives = n - len(value), n1 - int(pos.sum())
+        if zero < len(levels) and levels[zero] == 0:
+            sizes[zero] += count
+            hits[zero] += positives
+        else:
+            levels = np.insert(levels, zero, 0)
+            sizes = np.insert(sizes, zero, count)
+            hits = np.insert(hits, zero, positives)
     if slope > 0:
         levels, sizes, hits = levels[::-1], sizes[::-1], hits[::-1]
     tp = np.cumsum(hits)
@@ -162,7 +246,7 @@ def select_feature(X, y, weights):
         if slope == 0.:  # no training signal (balanced intercept-only probability is 0.5)
             continue
         ix, v = column(X, j)
-        cutoff, tp, pred = best_cutoff(v, y[ix], len(y), n1, slope)
+        cutoff, tp, pred = best_cutoff(v, y if ix is None else y[ix], len(y), n1, slope)
         ranking.append(dict(feature=int(j), slope=float(slope), intercept=float(intercept),
                             rule=">=" if slope > 0 else "<=", activation_cutoff=cutoff,
                             probability_cutoff=float(expit(slope * cutoff + intercept)),
@@ -174,7 +258,8 @@ def select_feature(X, y, weights):
 
 
 def evaluate_selected(X, y, centers, winner):
-    alpha = X.getcol(winner["feature"]).toarray().ravel()
+    alpha = (np.asarray(X.array[:, winner["feature"]]) if isinstance(X, DenseFeatureMatrix)
+             else X.getcol(winner["feature"]).toarray().ravel())
     cutoff = winner["activation_cutoff"]
     pred = alpha >= cutoff if winner["rule"] == ">=" else alpha <= cutoff
     if len(y) % len(centers):

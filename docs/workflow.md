@@ -2,7 +2,7 @@
 
 ## Running the notebooks
 
-Open notebooks 01–05 from the Colab links in the README. The setup cell in each notebook checks out the same immutable `RELEASE` commit in `/content/ams691_project_<commit>`. The checkout contains `scripts/`, `src/`, and the bundled cyclone labels.
+Open the six workflow notebooks (01, 02, 02b, 03, 04, 05) from the Colab links in the README. The setup cell in each notebook checks out the same immutable `RELEASE` commit in `/content/ams691_project_<commit>`. The checkout contains `scripts/`, `src/`, and the bundled cyclone labels.
 
 The notebook adds `scripts/` and `src/` to Python's import path. The collectors also run by their full script paths, so Python can find the adjacent `ams691_extract.py` automatically. No notebook generates this module or reads another notebook's source code.
 
@@ -22,15 +22,17 @@ The GraphCast commit, checkpoint name, layer, data source, time convention, and 
 
 Keep the same Drive account, experiment folder, `COHORT`, and `SAE_RUN` when opening the reorganized notebooks. Existing activation files and checkpoints are still checked against their manifests. No data migration or retraining is needed for this reorganization. Resume guards still reject changed datasets, corrupt activations, or mismatched checkpoint settings.
 
-Saved outputs and execution counts in notebooks 01–05 have been cleared. Rerun in Colab to record an execution of the reorganized notebooks. Clearing notebook output does not remove any activation files, checkpoints, or plots from Drive; completed work there will still be reused by the resume checks.
+Saved outputs and execution counts in the workflow notebooks have been cleared. Rerun in Colab to record an execution of the reorganized notebooks. Clearing notebook output does not remove any activation files, checkpoints, or plots from Drive; completed work there will still be reused by the resume checks.
 
-## KAN-SAE model and next training step
+## KAN-SAE training and probing
 
 The KAN-SAE model is implemented separately in `src/graphcast_interpretability/kan_sae.py`; the TopK baseline remains in `src/graphcast_interpretability/model.py`. See [the KAN-SAE guide](kan_sae.md) for the equations, calibration, checkpoint format, and tests. The saved GraphCast activation arrays, training and validation dates, cyclone masks, and storm snapshots can be reused.
 
-Notebook 02 currently shows the TopK training calculation explicitly. A separate KAN trainer will use the new model's initialization, forward pass, L1 loss, and decoder normalization. The current probe loader in `scripts/cyclone_probes.py` constructs the TopK class explicitly, and the probe calculations assume nonnegative features. They need a model choice and signed-feature handling before loading a KAN checkpoint. The labeled data and geographic mapping can then be shared.
+Notebook 02 preserves the TopK training calculation. Notebook 02b calls `scripts/train_kan_sae.py`, reads the TopK run's saved split, verifies every activation checksum, and trains KAN-SAE in a separate run folder. Calibration uses only training rows. `last.pt` is the authoritative completed-epoch state, including optimizer and knots; interrupted derived outputs are repaired from it on resume.
 
-Use a separate run directory for KAN-SAE. Compare the models using the same activation split, cyclone validation/test groups, and evaluation procedure. The model has been tested on synthetic data; no KAN-SAE has been trained on the project's GraphCast activations yet.
+Notebooks 04 and 05 use `SAE_TYPE` and `SAE_RUN` to select a checkpoint. `scripts/sae_checkpoint.py` supports both legacy TopK checkpoints and KAN checkpoints. Probe fitting scales by the training maximum absolute feature value and retains signs. Cutoff selection orders negative values, zero, and positive values correctly. Dense KAN fit/validation codes are stored on local disk; test evaluation retains only the selected feature. KAN storm plots use a diverging scale centered on zero.
+
+Use the same activation split, cyclone validation/test groups, and evaluation procedure for both models. The KAN defaults are 20 epochs with a 20-epoch L1 ramp; extending `EPOCHS` preserves that ramp. These are course-project settings, not a reproduction of the paper's 100-epoch SONNY experiment. The integration has CPU synthetic tests; real GraphCast KAN training must be run in Colab.
 
 ## Local checks and development
 
@@ -49,4 +51,4 @@ For local script work, add `scripts/` and `src/` to `PYTHONPATH`, or run a colle
 PYTHONPATH=scripts python -c "from ams691_extract import WEATHER_STORE; print(WEATHER_STORE)"
 ```
 
-When changing shared code, commit those changes first. Then update `RELEASE` in all five notebooks to that code commit and commit the notebook changes. This makes the Colab entry points use a reproducible code version. A notebook does not automatically use edits from a different Git branch merely because it was opened from that branch.
+When changing shared code, commit those changes first. Then update `RELEASE` in all six notebooks to that code commit and commit the notebook changes. This makes the Colab entry points use a reproducible code version. A notebook does not automatically use edits from a different Git branch merely because it was opened from that branch.

@@ -1,4 +1,4 @@
-"""Encode the selected TopK feature and draw the two Figure 4 storm sequences."""
+"""Encode selected TopK or signed KAN features and draw Figure 4 storm sequences."""
 import json
 import tempfile
 from pathlib import Path
@@ -38,7 +38,7 @@ def saved_selection(label_root, cohort, checkpoint):
     """Find notebook 04's saved choice using the actual checkpoint checksum."""
     checkpoint = Path(checkpoint)
     if not checkpoint.is_file():
-        raise FileNotFoundError(f"The notebook 02 checkpoint is missing: {checkpoint}")
+        raise FileNotFoundError(f"The selected SAE checkpoint is missing: {checkpoint}")
     digest = sha256(checkpoint)
     probe_dir = Path(label_root) / cohort / "probe_runs" / (checkpoint.parent.name + "_" + digest[:12])
     selection_path = probe_dir / "selected_feature.json"
@@ -54,13 +54,15 @@ def saved_selection(label_root, cohort, checkpoint):
 
 
 def encode_storms(label_root, data_dir, cohort, checkpoint, cache, out):
-    """Apply notebook 02's complete SAE forward pass, including its TopK step."""
+    """Use the saved model's own normalization and feature activation function."""
     import torch
     from cyclone_probes import open_experiment
+    from sae_checkpoint import feature_codes, model_type
 
     selection, _ = saved_selection(label_root, cohort, checkpoint)
     model, device, manifest, _, identity = open_experiment(
         Path(label_root), Path(data_dir), cohort, Path(checkpoint))
+    signed = model_type(model) == "kan_sae"
     if selection["experiment"] != identity:
         raise ValueError("Notebook 04's saved selection does not match this SAE run.")
     collected = json.loads((Path(cache) / "dataset.json").read_text())
@@ -83,9 +85,9 @@ def encode_storms(label_root, data_dir, cohort, checkpoint, cache, out):
                 reusable = (saved["checkpoint_sha256"].item() == identity["checkpoint_sha256"]
                             and saved["activation_sha256"].item() == record["activation_sha256"]
                             and saved["feature_id"].item() == feature
-                            and saved["values"].shape == (40962,)
+                            and saved["values"].shape == (manifest["source"]["shape"][0],)
                             and np.all(np.isfinite(saved["values"]))
-                            and np.all(saved["values"] >= 0))
+                            and (signed or np.all(saved["values"] >= 0)))
             if reusable:
                 encoded[time] = dict(path=str(target), sha256=sha256(target))
                 print(f"Feature already encoded for {time} UTC.", flush=True)
@@ -98,11 +100,11 @@ def encode_storms(label_root, data_dir, cohort, checkpoint, cache, out):
             raise ValueError(f"Unexpected GraphCast activation shape or dtype at {time}.")
         values = np.empty(len(array), dtype=np.float32)
         with torch.inference_mode():
-            for start in range(0, len(array), 1024):
-                batch = torch.from_numpy(np.array(array[start:start + 1024], copy=True)).to(device)
-                _, code, _ = model(batch)
+            for start in range(0, len(array), 256):
+                batch = torch.from_numpy(np.array(array[start:start + 256], copy=True)).to(device)
+                code = feature_codes(model, batch)
                 values[start:start + len(batch)] = code[:, feature].cpu().numpy()
-        if not np.all(np.isfinite(values)) or np.any(values < 0):
+        if not np.all(np.isfinite(values)) or (not signed and np.any(values < 0)):
             raise ValueError(f"The SAE produced invalid feature values at {time}.")
         save_npz(target, values=values, feature_id=feature,
                  checkpoint_sha256=identity["checkpoint_sha256"],
@@ -117,8 +119,16 @@ def encode_storms(label_root, data_dir, cohort, checkpoint, cache, out):
     return metadata
 
 
+def feature_color_limits(features, kind):
+    """One scale across each storm's five dates; signed KAN maps center on zero."""
+    if kind == "kan_sae":
+        limit = max(max(float(np.max(np.abs(field))) for field in features), 1e-6)
+        return -limit, limit
+    return 0., max(max(float(np.max(field)) for field in features), 1e-6)
+
+
 def draw_storms(cache, out):
-    """Plot post-TopK activation and ERA5 10 m speed with shared scales per row."""
+    """Plot feature values and ERA5 wind speed with shared scales per row."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -131,9 +141,11 @@ def draw_storms(cache, out):
         raise ValueError("The storm collection changed after feature encoding.")
     collected = json.loads((cache / "dataset.json").read_text())
     feature = int(metadata["selection"]["feature"])
+    kind = metadata["experiment"].get("model_type", "topk")
+    model_label = "KAN-SAE" if kind == "kan_sae" else "TopK SAE"
     colors = plt.get_cmap("YlGnBu")(np.linspace(0, 1, 256))
     colors[0] = [1, 1, 1, 1]
-    feature_cmap = ListedColormap(colors)
+    feature_cmap = plt.get_cmap("RdBu_r") if kind == "kan_sae" else ListedColormap(colors)
     outputs, scales = [], {}
     for storm in STORMS:
         mapping_record = collected["mappings"][storm["key"]]
@@ -158,7 +170,7 @@ def draw_storms(cache, out):
                 winds.append(np.hypot(saved["u10"], saved["v10"]))
         feature_max = max(float(field.max()) for field in features)
         wind_max = max(float(field.max()) for field in winds)
-        feature_norm = Normalize(0, max(feature_max, 1e-6))
+        feature_norm = Normalize(*feature_color_limits(features, kind))
         wind_norm = Normalize(0, max(5., 5. * np.ceil(wind_max / 5.)))
         fig, axes = plt.subplots(2, 5, figsize=(18, 6.6), constrained_layout=True,
                                  subplot_kw={"projection": ccrs.PlateCarree()})
@@ -178,7 +190,7 @@ def draw_storms(cache, out):
                     if row == 1:
                         label = "ERA5 10 m wind speed (m/s)"
                     colorbar.set_label(label, fontsize=10)
-        fig.suptitle(f"{storm['panel']}   {storm['name']} — TopK SAE feature {feature}\n"
+        fig.suptitle(f"{storm['panel']}   {storm['name']} — {model_label} feature {feature}\n"
                      "UTC initialization times and ERA5 winds at the same times", fontsize=14)
         stem = out / f"figure4{storm['panel'].lower()}_{storm['key']}"
         for suffix in (".png", ".pdf"):
@@ -186,7 +198,8 @@ def draw_storms(cache, out):
             fig.savefig(path, dpi=220, facecolor="white", bbox_inches="tight")
             outputs.append(path)
         plt.close(fig)
-        scales[storm["key"]] = dict(feature_vmin=0., feature_vmax=float(feature_norm.vmax),
+        scales[storm["key"]] = dict(feature_vmin=float(feature_norm.vmin), feature_vmax=float(feature_norm.vmax),
+                                    feature_cmap=feature_cmap.name,
                                     wind_vmin=0., wind_vmax=float(wind_norm.vmax))
         print(f"Saved {storm['name']} panels. Feature maximum {feature_max:.6g}.", flush=True)
     metadata["plot_scales"] = scales

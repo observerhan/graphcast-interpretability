@@ -16,8 +16,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-sae = ["torch>=2.2"]
-test = ["torch>=2.2", "scipy>=1.10"]
+sae = ["torch>=2.2", "tqdm", "matplotlib"]
+test = ["torch>=2.2", "scipy>=1.10", "tqdm", "matplotlib"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
