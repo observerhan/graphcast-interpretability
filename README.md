@@ -25,7 +25,7 @@ The five notebooks are the Colab entry points. Shared GraphCast code is stored a
 | [`scripts/cyclone_probes.py`](scripts/cyclone_probes.py) | Fit, select, and evaluate the per-feature logistic probes |
 | [`scripts/collect_figure4_storms.py`](scripts/collect_figure4_storms.py) and [`scripts/figure4_storms.py`](scripts/figure4_storms.py) | Collect the storm examples, encode the selected feature, and draw the maps |
 
-All five notebooks load the same pinned project revision. Notebooks 01, 03, and 05 call the checked-in setup and extraction scripts directly. Notebook 02 imports the SAE from `src/` in that same checkout. Existing Drive datasets, checkpoints, probe selections, and storm caches remain usable; the reorganization does not require collecting or training them again. Saved result outputs are retained from the earlier executed notebooks; changed setup cells have their old outputs cleared.
+All five notebooks load the same pinned project revision. Notebooks 01, 03, and 05 call the checked-in setup and extraction scripts directly. Notebook 02 imports the SAE from `src/` in that same checkout. Existing Drive datasets, checkpoints, probe selections, and storm caches remain usable; the reorganization does not require collecting or training them again. Saved outputs and execution counts in notebooks 01–05 have been cleared for a fresh Colab run.
 
 See [the workflow guide](docs/workflow.md) for the import paths, local checks, and the parts we can reuse for KAN-SAE.
 

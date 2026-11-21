@@ -22,7 +22,7 @@ The GraphCast commit, checkpoint name, layer, data source, time convention, and 
 
 Keep the same Drive account, experiment folder, `COHORT`, and `SAE_RUN` when opening the reorganized notebooks. Existing activation files and checkpoints are still checked against their manifests. No data migration or retraining is needed for this reorganization. Resume guards still reject changed datasets, corrupt activations, or mismatched checkpoint settings.
 
-The committed result tables and figures are historical outputs from the earlier executions. They were retained in cells whose calculation code was unchanged. Rerun in Colab to record a complete execution of the reorganized notebooks.
+Saved outputs and execution counts in notebooks 01–05 have been cleared. Rerun in Colab to record an execution of the reorganized notebooks. Clearing notebook output does not remove any activation files, checkpoints, or plots from Drive; completed work there will still be reused by the resume checks.
 
 ## Adding KAN-SAE next
 
