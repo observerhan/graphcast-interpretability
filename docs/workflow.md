@@ -1,0 +1,52 @@
+# Working with the AMS691 repository
+
+## Running the notebooks
+
+Open notebooks 01–05 from the Colab links in the README. The setup cell in each notebook checks out the same immutable `RELEASE` commit in `/content/ams691_project_<commit>`. The checkout contains `scripts/`, `src/`, and the bundled cyclone labels.
+
+The notebook adds `scripts/` and `src/` to Python's import path. The collectors also run by their full script paths, so Python can find the adjacent `ams691_extract.py` automatically. No notebook generates this module or reads another notebook's source code.
+
+Notebooks 01, 03, and 05 run `scripts/setup_graphcast.py` with Colab's Python. That script prepares `/content/ams691_graphcast_env` and checks the GraphCast activation hook inside that environment. The collectors then run with that environment's Python. The TopK training and probing steps use Colab's PyTorch environment.
+
+## Following an ERA5 read
+
+1. Find the cloud address in `WEATHER_STORE` in `scripts/ams691_extract.py`.
+2. `open_weather(task)` in the same file opens that Zarr dataset and checks its quarter-degree grid.
+3. `forecast_window(source, center, pressure_levels)` loads the three times needed for a forecast: initialization minus six hours, initialization, and initialization plus six hours.
+4. For the storm maps, `scripts/collect_figure4_storms.py` separately selects the two 10 m wind components at initialization and saves the regional arrays.
+5. `scripts/figure4_storms.py` computes the wind magnitude and draws the maps.
+
+The GraphCast commit, checkpoint name, layer, data source, time convention, and saved file formats are the same as in the executed baseline. The setup script keeps the previous package requirements and memory-saving hook patch.
+
+## Reusing existing results
+
+Keep the same Drive account, experiment folder, `COHORT`, and `SAE_RUN` when opening the reorganized notebooks. Existing activation files and checkpoints are still checked against their manifests. No data migration or retraining is needed for this reorganization. Resume guards still reject changed datasets, corrupt activations, or mismatched checkpoint settings.
+
+The committed result tables and figures are historical outputs from the earlier executions. They were retained in cells whose calculation code was unchanged. Rerun in Colab to record a complete execution of the reorganized notebooks.
+
+## Adding KAN-SAE next
+
+The saved GraphCast activation arrays, training and validation dates, cyclone masks, and storm snapshots can be reused. Keep the TopK model in `src/graphcast_interpretability/model.py` as the baseline and add the KAN-SAE model separately under that package.
+
+Notebook 02 currently shows the TopK training calculation explicitly. The model construction, forward pass, and any architecture-specific loss or constraints will need to be adapted for KAN-SAE. The current probe loader in `scripts/cyclone_probes.py` also constructs the TopK class explicitly; it will need a model choice before loading a KAN checkpoint. The per-feature probe evaluation and geographic plotting can then be shared.
+
+Use a separate run directory for KAN-SAE. Compare the models using the same activation split, cyclone validation/test groups, and evaluation procedure. This cleanup does not implement or train KAN-SAE.
+
+## Local checks and development
+
+The lightweight checks require NumPy and xarray, but no GPU, GraphCast weights, or cloud downloads.
+
+```bash
+python -m pip install numpy==2.2.6 xarray==2025.1.2
+python -m unittest discover -s tests -v
+```
+
+The checks use synthetic data for midnight-crossing time windows, latitude ordering, invalid-grid rejection, atomic activation saving, and resuming completed runs. Full GraphCast execution still requires the Colab A100/H100 environment.
+
+For local script work, add `scripts/` and `src/` to `PYTHONPATH`, or run a collector by its script path. The dependency-light configuration can be inspected without installing GraphCast:
+
+```bash
+PYTHONPATH=scripts python -c "from ams691_extract import WEATHER_STORE; print(WEATHER_STORE)"
+```
+
+When changing shared code, commit those changes first. Then update `RELEASE` in all five notebooks to that code commit and commit the notebook changes. This makes the Colab entry points use a reproducible code version. A notebook does not automatically use edits from a different Git branch merely because it was opened from that branch.

@@ -11,47 +11,13 @@ os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 
 import jax
 import numpy as np
-import xarray as xr
-from google.cloud import storage
-from graphcast import checkpoint, data_utils, graphcast, icosahedral_mesh
+from graphcast import data_utils, icosahedral_mesh
 from graphcast.deep_typed_graph_net import get_activation_manager
 
-# Notebook 03 exports the original %writefile cell of the pinned notebook 01
-# to this module in /content. Its functions preserve the original hook and numerics.
+# Shared configuration and extraction live next to this collector in scripts/.
 from ams691_extract import (GRAPHCAST_COMMIT, MODEL_NAME, WEATHER_STORE, check_array,
-                            forecast_window, install_writer, make_forward)
+                            forecast_window, install_writer, load_model, make_forward, open_weather)
 from cyclone_data import activation_path, read_labels, read_samples, sha256, write_json
-
-
-def load_model():
-    bucket = storage.Client.create_anonymous_client().bucket("dm_graphcast")
-    cache = Path("/content/ams691_graphcast_downloads")
-    cache.mkdir(parents=True, exist_ok=True)
-
-    def download(name):
-        path = cache / Path(name).name
-        if not path.exists():
-            tmp = path.with_suffix(path.suffix + ".tmp")
-            bucket.blob("graphcast/" + name).download_to_filename(str(tmp))
-            tmp.replace(path)
-        return path
-
-    with download("params/" + MODEL_NAME).open("rb") as f:
-        ckpt = checkpoint.load(f, graphcast.CheckPoint)
-    stats = {name: xr.load_dataset(download("stats/" + name + ".nc"))
-             for name in ("diffs_stddev_by_level", "mean_by_level", "stddev_by_level")}
-    return ckpt, stats
-
-
-def open_weather(task):
-    ds = xr.open_zarr(WEATHER_STORE, consolidated=True, storage_options={"token": "anon"})
-    ds = ds.rename({x: y for x, y in [("latitude", "lat"), ("longitude", "lon")] if x in ds.coords})
-    ds = ds.sortby("lat") if ds.lat.values[0] > ds.lat.values[-1] else ds
-    if not (np.array_equal(ds.lat.values, np.arange(-90, 90.25, 0.25))
-            and np.array_equal(ds.lon.values, np.arange(0, 360, 0.25))):
-        raise ValueError("ERA5 does not have the expected global quarter-degree grid.")
-    needed = set(task.input_variables + task.target_variables + task.forcing_variables)
-    return ds[sorted(needed - set(graphcast.GENERATED_FORCING_VARS))]
 
 
 def collect(root, data_dir, cohort):

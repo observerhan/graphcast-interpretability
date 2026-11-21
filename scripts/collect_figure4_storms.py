@@ -22,9 +22,8 @@ def collect(label_root, data_dir, cache):
     from graphcast import data_utils, icosahedral_mesh
     from graphcast.deep_typed_graph_net import get_activation_manager
     from graphcast_interpretability.interpolate_utils import GridMeshMapper
-    from collect_cyclone_activations import load_model, open_weather
     from ams691_extract import (GRAPHCAST_COMMIT, MODEL_NAME, WEATHER_STORE, check_array,
-                                forecast_window, install_writer, make_forward)
+                                forecast_window, install_writer, load_model, make_forward, open_weather)
 
     provenance = json.loads((data_dir / "provenance.json").read_text())
     source = dict(graphcast_commit=GRAPHCAST_COMMIT, checkpoint=MODEL_NAME,

@@ -4,11 +4,30 @@ Run these in **Google Colab in your browser**, in this order. You can keep the d
 
 | Order | Notebook | What it does | GPU |
 |---|---|---|---|
-| 1 | [Extract activations](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/simple-colab/01_extract_activations_to_drive.ipynb) | Downloads weather data, runs GraphCast, saves layer-8 activations to Drive | A100 or H100 |
-| 2 | [Train TopK SAE](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/simple-colab/02_train_topk_sae.ipynb) | Finds those activations, trains the authors' SAE class, saves weights and a loss plot | T4 or larger |
-| 3 | [Prepare cyclone examples](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/cyclone-probes/03_prepare_cyclone_examples.ipynb) | Run the same frozen GraphCast at exact mask hours and pair each layer-8 row with its mesh label | A100 or H100 |
-| 4 | [Probe TopK features](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/cyclone-probes/04_probe_topk_cyclones.ipynb) | Load notebook 2’s `best.pt`, fit one probe per feature, select on validation F1 and evaluate on held-out storms | T4 or larger |
-| 5 | [Plot Ida and Hagibis](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/figure4-plots/05_plot_cyclone_features.ipynb) | Read notebook 4’s selected feature and draw the ten storm snapshots from Figure 4B–C with matching ERA5 winds | A100 or H100 |
+| 1 | [Extract activations](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/organized-workflow/01_extract_activations_to_drive.ipynb) | Downloads weather data, runs GraphCast, saves layer-8 activations to Drive | A100 or H100 |
+| 2 | [Train TopK SAE](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/organized-workflow/02_train_topk_sae.ipynb) | Finds those activations, trains the authors' SAE class, saves weights and a loss plot | T4 or larger |
+| 3 | [Prepare cyclone examples](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/organized-workflow/03_prepare_cyclone_examples.ipynb) | Run the same frozen GraphCast at exact mask hours and pair each layer-8 row with its mesh label | A100 or H100 |
+| 4 | [Probe TopK features](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/organized-workflow/04_probe_topk_cyclones.ipynb) | Load notebook 2’s `best.pt`, fit one probe per feature, select on validation F1 and evaluate on held-out storms | T4 or larger |
+| 5 | [Plot Ida and Hagibis](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/organized-workflow/05_plot_cyclone_features.ipynb) | Read notebook 4’s selected feature and draw the ten storm snapshots from Figure 4B–C with matching ERA5 winds | A100 or H100 |
+
+### Where the code lives
+
+The five notebooks are the Colab entry points. Shared GraphCast code is stored as ordinary Python files in the repository, so you can read it directly in GitHub or VS Code.
+
+| Location | Responsibility |
+|---|---|
+| [`scripts/ams691_extract.py`](scripts/ams691_extract.py) | `WEATHER_STORE`, the GraphCast checkpoint, ERA5 loading, forecast windows, activation saving, and monthly extraction |
+| [`scripts/setup_graphcast.py`](scripts/setup_graphcast.py) | Install the separate Colab GraphCast environment and verify the activation hook |
+| [`src/graphcast_interpretability/model.py`](src/graphcast_interpretability/model.py) | The authors' unchanged TopK SAE class |
+| [`02_train_topk_sae.ipynb`](02_train_topk_sae.ipynb) | Training settings, batching, loss, optimizer, checkpoints, and learning curves |
+| [`scripts/collect_cyclone_activations.py`](scripts/collect_cyclone_activations.py) | Run the shared extractor at labeled cyclone times |
+| [`scripts/cyclone_data.py`](scripts/cyclone_data.py) and [`data/cyclone_2019_2021/`](data/cyclone_2019_2021/) | Label loading, fixed schedules, mesh labels, and data provenance |
+| [`scripts/cyclone_probes.py`](scripts/cyclone_probes.py) | Fit, select, and evaluate the per-feature logistic probes |
+| [`scripts/collect_figure4_storms.py`](scripts/collect_figure4_storms.py) and [`scripts/figure4_storms.py`](scripts/figure4_storms.py) | Collect the storm examples, encode the selected feature, and draw the maps |
+
+All five notebooks load the same pinned project revision. Notebooks 01, 03, and 05 call the checked-in setup and extraction scripts directly. Notebook 02 imports the SAE from `src/` in that same checkout. Existing Drive datasets, checkpoints, probe selections, and storm caches remain usable; the reorganization does not require collecting or training them again. Saved result outputs are retained from the earlier executed notebooks; changed setup cells have their old outputs cleared.
+
+See [the workflow guide](docs/workflow.md) for the import paths, local checks, and the parts we can reuse for KAN-SAE.
 
 Connect the **same Google Drive account** in all five notebooks. Notebooks 1 and 2 save their experiment under **My Drive → AMS691_GraphCast → monthly_2017_2018**. No terminal commands, local installation, manually downloaded weather files, or activation-path editing are needed.
 
@@ -24,7 +43,7 @@ Results are in `AMS691_GraphCast/monthly_2017_2018/topk_runs/topk_baseline`: `be
 
 ### Labeled cyclone experiment
 
-The `cyclone-probes` branch extends `simple-colab`. If you have already run notebooks 1 and 2, open notebook 3. Its default selects 12 snapshots from 2019 to fit probes, 8 from 2020 to choose the feature and cutoff, and 8 from 2021 to measure test F1. It saves about 2.35 GB in `AMS691_GraphCast/cyclones_2019_2021` and resumes completed timestamps. Both notebooks also support the 93-snapshot `all_guarded` schedule. Use the same setting in both.
+The `organized-workflow` branch includes the activation, training, cyclone-probe, and storm-plotting workflows. If you have already run notebooks 1 and 2, open notebook 3. Its default selects 12 snapshots from 2019 to fit probes, 8 from 2020 to choose the feature and cutoff, and 8 from 2021 to measure test F1. It saves about 2.35 GB in `AMS691_GraphCast/cyclones_2019_2021` and resumes completed timestamps. Both notebooks also support the 93-snapshot `all_guarded` schedule. Use the same setting in both.
 
 **What was counted.** The cleaned release has 697 timestamped maps in 2019–2021. Taking the union of the two annotators, 452 maps contain at least one cyclone, totaling 769 connected footprints. Counting diagonals and wrapping longitude follows the dataset’s region definition. At the four exact GraphCast hours there are 117 maps, 77 positive maps, and 125 footprints. The mask files have no persistent storm IDs. In an independent check, 671 of the 769 footprints contained an interpolated NOAA IBTrACS main-track center, representing 206 distinct IDs.
 
