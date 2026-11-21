@@ -15,5 +15,9 @@ dependencies = [
     "jax"
 ]
 
+[project.optional-dependencies]
+sae = ["torch>=2.2"]
+test = ["torch>=2.2", "scipy>=1.10"]
+
 [tool.setuptools.packages.find]
 where = ["src"]

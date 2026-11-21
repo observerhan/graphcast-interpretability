@@ -24,24 +24,24 @@ Keep the same Drive account, experiment folder, `COHORT`, and `SAE_RUN` when ope
 
 Saved outputs and execution counts in notebooks 01–05 have been cleared. Rerun in Colab to record an execution of the reorganized notebooks. Clearing notebook output does not remove any activation files, checkpoints, or plots from Drive; completed work there will still be reused by the resume checks.
 
-## Adding KAN-SAE next
+## KAN-SAE model and next training step
 
-The saved GraphCast activation arrays, training and validation dates, cyclone masks, and storm snapshots can be reused. Keep the TopK model in `src/graphcast_interpretability/model.py` as the baseline and add the KAN-SAE model separately under that package.
+The KAN-SAE model is implemented separately in `src/graphcast_interpretability/kan_sae.py`; the TopK baseline remains in `src/graphcast_interpretability/model.py`. See [the KAN-SAE guide](kan_sae.md) for the equations, calibration, checkpoint format, and tests. The saved GraphCast activation arrays, training and validation dates, cyclone masks, and storm snapshots can be reused.
 
-Notebook 02 currently shows the TopK training calculation explicitly. The model construction, forward pass, and any architecture-specific loss or constraints will need to be adapted for KAN-SAE. The current probe loader in `scripts/cyclone_probes.py` also constructs the TopK class explicitly; it will need a model choice before loading a KAN checkpoint. The per-feature probe evaluation and geographic plotting can then be shared.
+Notebook 02 currently shows the TopK training calculation explicitly. A separate KAN trainer will use the new model's initialization, forward pass, L1 loss, and decoder normalization. The current probe loader in `scripts/cyclone_probes.py` constructs the TopK class explicitly, and the probe calculations assume nonnegative features. They need a model choice and signed-feature handling before loading a KAN checkpoint. The labeled data and geographic mapping can then be shared.
 
-Use a separate run directory for KAN-SAE. Compare the models using the same activation split, cyclone validation/test groups, and evaluation procedure. This cleanup does not implement or train KAN-SAE.
+Use a separate run directory for KAN-SAE. Compare the models using the same activation split, cyclone validation/test groups, and evaluation procedure. The model has been tested on synthetic data; no KAN-SAE has been trained on the project's GraphCast activations yet.
 
 ## Local checks and development
 
-The lightweight checks require NumPy and xarray, but no GPU, GraphCast weights, or cloud downloads.
+The extraction checks require NumPy and xarray, but no GPU, GraphCast weights, or cloud downloads.
 
 ```bash
 python -m pip install numpy==2.2.6 xarray==2025.1.2
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -p test_extraction.py -v
 ```
 
-The checks use synthetic data for midnight-crossing time windows, latitude ordering, invalid-grid rejection, atomic activation saving, and resuming completed runs. Full GraphCast execution still requires the Colab A100/H100 environment.
+The extraction checks use synthetic data for midnight-crossing time windows, latitude ordering, invalid-grid rejection, atomic activation saving, and resuming completed runs. Full GraphCast execution still requires the Colab A100/H100 environment. To run the KAN-SAE tests too, install the `sae,test` extras and use `python -m unittest discover -s tests -v`, as explained in the KAN-SAE guide.
 
 For local script work, add `scripts/` and `src/` to `PYTHONPATH`, or run a collector by its script path. The dependency-light configuration can be inspected without installing GraphCast:
 

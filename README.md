@@ -19,6 +19,7 @@ The five notebooks are the Colab entry points. Shared GraphCast code is stored a
 | [`scripts/ams691_extract.py`](scripts/ams691_extract.py) | `WEATHER_STORE`, the GraphCast checkpoint, ERA5 loading, forecast windows, activation saving, and monthly extraction |
 | [`scripts/setup_graphcast.py`](scripts/setup_graphcast.py) | Install the separate Colab GraphCast environment and verify the activation hook |
 | [`src/graphcast_interpretability/model.py`](src/graphcast_interpretability/model.py) | The authors' unchanged TopK SAE class |
+| [`src/graphcast_interpretability/kan_sae.py`](src/graphcast_interpretability/kan_sae.py) | KAN-SAE model, spline calibration, L1 loss, and decoder normalization |
 | [`02_train_topk_sae.ipynb`](02_train_topk_sae.ipynb) | Training settings, batching, loss, optimizer, checkpoints, and learning curves |
 | [`scripts/collect_cyclone_activations.py`](scripts/collect_cyclone_activations.py) | Run the shared extractor at labeled cyclone times |
 | [`scripts/cyclone_data.py`](scripts/cyclone_data.py) and [`data/cyclone_2019_2021/`](data/cyclone_2019_2021/) | Label loading, fixed schedules, mesh labels, and data provenance |
@@ -28,6 +29,8 @@ The five notebooks are the Colab entry points. Shared GraphCast code is stored a
 All five notebooks load the same pinned project revision. Notebooks 01, 03, and 05 call the checked-in setup and extraction scripts directly. Notebook 02 imports the SAE from `src/` in that same checkout. Existing Drive datasets, checkpoints, probe selections, and storm caches remain usable; the reorganization does not require collecting or training them again. Saved outputs and execution counts in notebooks 01–05 have been cleared for a fresh Colab run.
 
 See [the workflow guide](docs/workflow.md) for the import paths, local checks, and the parts we can reuse for KAN-SAE.
+
+The **KAN-SAE model is now implemented** with a learned cubic B-spline for each feature. See [the KAN-SAE guide](docs/kan_sae.md) for initialization, model usage, tests, and the choices needed to adapt the paper to GraphCast. The five Colab notebooks above still run the TopK baseline; KAN training and signed-feature probe integration are the next step.
 
 Connect the **same Google Drive account** in all five notebooks. Notebooks 1 and 2 save their experiment under **My Drive → AMS691_GraphCast → monthly_2017_2018**. No terminal commands, local installation, manually downloaded weather files, or activation-path editing are needed.
 
