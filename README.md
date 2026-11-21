@@ -8,8 +8,9 @@ Run these in **Google Colab in your browser**, in this order. You can keep the d
 | 2 | [Train TopK SAE](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/simple-colab/02_train_topk_sae.ipynb) | Finds those activations, trains the authors' SAE class, saves weights and a loss plot | T4 or larger |
 | 3 | [Prepare cyclone examples](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/cyclone-probes/03_prepare_cyclone_examples.ipynb) | Run the same frozen GraphCast at exact mask hours and pair each layer-8 row with its mesh label | A100 or H100 |
 | 4 | [Probe TopK features](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/cyclone-probes/04_probe_topk_cyclones.ipynb) | Load notebook 2’s `best.pt`, fit one probe per feature, select on validation F1 and evaluate on held-out storms | T4 or larger |
+| 5 | [Plot Ida and Hagibis](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/figure4-plots/05_plot_cyclone_features.ipynb) | Read notebook 4’s selected feature and draw the ten storm snapshots from Figure 4B–C with matching ERA5 winds | A100 or H100 |
 
-Connect the **same Google Drive account** in all four notebooks. Notebooks 1 and 2 save their experiment under **My Drive → AMS691_GraphCast → monthly_2017_2018**. No terminal commands, local installation, manually downloaded weather files, or activation-path editing are needed.
+Connect the **same Google Drive account** in all five notebooks. Notebooks 1 and 2 save their experiment under **My Drive → AMS691_GraphCast → monthly_2017_2018**. No terminal commands, local installation, manually downloaded weather files, or activation-path editing are needed.
 
 The defaults extract **27 snapshots at 12:00 UTC** (about **2.3 GB** of activations). The **24 training snapshots** use the 15th of every month in 2017 and 2018. We add **3 validation snapshots** on August 29, 2017, April 29, 2018, and December 29, 2018. The count is 10% of the number of training dates, rounded up. Notebook 2 checks reconstruction across those three dates after every epoch. Notebooks 3 and 4 use separate, labeled 2019–2021 storms for cyclone F1.
 
@@ -32,6 +33,10 @@ The [timestamp inventory](data/cyclone_2019_2021/mask_inventory.csv) gives annot
 The bundled mesh labels are ready to use. To reproduce the inventory and projection, run `python scripts/prepare_cyclone_labels.py TC_labels_cleaned.zip ibtracs.since1980.list.v04r01.csv OUTPUT_DIR` with the notebook 3 GraphCast environment plus `h5netcdf` and `h5py`. [Input URLs, checksums and projection settings](data/cyclone_2019_2021/provenance.json).
 
 Notebook 4 writes the zero-based feature ID, its inclusive cutoff and validation scores to `selected_feature.json`, then writes held-out results to `test_metrics.json`. Both are under `cyclones_2019_2021/course/probe_runs/` for the default sample.
+
+Notebook 5 produces the Ida and Hagibis panels from Figure 4B–C using the feature saved by notebook 4. The committed course result selected feature 3288 with validation F1 0.252023 and test F1 0.380000. It collects five Ida snapshots from August 28–30, 2021 at 12-hour intervals, and five Hagibis snapshots from October 5–13, 2019 at 48-hour intervals. The ten timestamps match the figure. Each map uses the initialization-time convention from notebook 3, with ERA5 10 m winds at that same time. The source figure’s exact input-versus-target time convention is ambiguous in the paper, and the saved metadata states our convention explicitly.
+
+Use the same `COHORT`, `SAE_RUN` and `SAE_EXPERIMENT` settings as notebook 4. The ten new activation files occupy about 0.84 GB, with completed files reused after a disconnect. The plotting script uses the authors’ containing-triangle mesh-to-grid mapping and shares each row’s color scale across its five dates. PNG and PDF panels plus `figure4_metadata.json` are saved in the selected probe run’s `figure4_storms` folder. The regional windows are 100–70°W, 15–40°N for Ida and 120–165°E, 5–45°N for Hagibis.
 
 The original four-snapshot Ida run is available in the branch history. Its activation and model folders in Drive are separate from the monthly experiment.
 
