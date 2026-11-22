@@ -14,6 +14,7 @@ from tqdm.auto import tqdm
 from cyclone_data import activation_path, read_labels, read_samples, sha256, write_json
 
 RIDGE = 1e-4  # on the slope after division by the training maximum absolute value
+PROBE_GRAD_TOL = 1e-8  # checked on the balanced loss in scaled-feature coordinates
 
 
 class DenseFeatureMatrix:
@@ -169,6 +170,56 @@ def column(X, j):
     return X.indices[lo:hi], X.data[lo:hi]
 
 
+def _fit_logistic_probe(z, target, w, feature):
+    """Solve the same convex two-parameter loss, validating the actual solution.
+
+    L-BFGS-B can report an abnormal line-search termination near the optimum.
+    Check the loss and analytic gradient ourselves; if needed, retry with an
+    exact-Hessian trust-region solver, which does not use that line search.
+    """
+    def objective(params):
+        a, b = params
+        score = a * z + b
+        loss = (w * np.logaddexp(0., (1. - 2. * target) * score)).sum() + .5 * RIDGE * a * a
+        residual = w * (expit(score) - target)
+        return loss, np.array([(residual * z).sum() + RIDGE * a, residual.sum()])
+
+    def hessian(params):
+        score = params[0] * z + params[1]
+        curvature = w * expit(score) * expit(-score)
+        cross = (curvature * z).sum()
+        return np.array([[(curvature * z * z).sum() + RIDGE, cross],
+                         [cross, curvature.sum()]])
+
+    initial = np.zeros(2)
+    initial_loss, _ = objective(initial)
+
+    def checked(params):
+        if not np.all(np.isfinite(params)):
+            return False, float("inf")
+        loss, gradient = objective(params)
+        grad_norm = float(np.max(np.abs(gradient)))
+        good = (np.isfinite(loss) and np.isfinite(grad_norm)
+                and loss <= initial_loss + 1e-12 and grad_norm <= PROBE_GRAD_TOL)
+        return good, grad_norm
+
+    opt = minimize(objective, initial, method="L-BFGS-B", jac=True,
+                   options={"gtol": 1e-9, "ftol": 1e-13, "maxiter": 150, "maxls": 50})
+    good, _ = checked(opt.x)
+    if good:
+        return opt.x, False
+
+    # Start independently so a bad or nonfinite line-search iterate is not reused.
+    retry = minimize(objective, initial, method="trust-exact", jac=True, hess=hessian,
+                     options={"gtol": 1e-9, "maxiter": 150})
+    good, grad_norm = checked(retry.x)
+    if not good:
+        raise RuntimeError(f"Probe {feature} did not converge after both solvers: "
+                           f"L-BFGS-B={opt.message}; trust-exact={retry.message}; "
+                           f"gradient norm={grad_norm:.3g} (required <= {PROBE_GRAD_TOL:g}).")
+    return retry.x, True
+
+
 def fit_probes(X, y):
     """Each fit node contributes. Implicit zero inputs are aggregated by class."""
     n1 = int(y.sum())
@@ -176,12 +227,13 @@ def fit_probes(X, y):
     if not n1 or not n0:
         raise ValueError("Probe fitting requires both classes.")
     weights = np.zeros((X.shape[1], 2), dtype=np.float64)  # slope per raw unit, intercept
+    retries = 0
     for j in tqdm(range(X.shape[1]), desc="Fitting single-feature probes"):
         rows, value = column(X, j)
+        if not np.isfinite(value).all():
+            raise ValueError(f"Feature {j} values must be finite.")
         if not len(value) or (len(value) == len(y) and value.min() == value.max()):
             continue
-        if not np.isfinite(value).all():
-            raise ValueError("Feature values must be finite.")
         scale = float(np.abs(value).max())
         if scale == 0:
             continue
@@ -192,18 +244,11 @@ def fit_probes(X, y):
         w = np.r_[np.where(pos, .5 / n1, .5 / n0),
                   .5 * (n1 - p) / n1, .5 * (n0 - len(pos) + p) / n0]
 
-        def objective(params):
-            a, b = params
-            score = a * z + b
-            loss = (w * np.logaddexp(0., (1. - 2. * target) * score)).sum() + .5 * RIDGE * a * a
-            residual = w * (expit(score) - target)
-            return loss, np.array([(residual * z).sum() + RIDGE * a, residual.sum()])
-
-        opt = minimize(objective, np.zeros(2), method="L-BFGS-B", jac=True,
-                       options={"gtol": 1e-9, "ftol": 1e-13, "maxiter": 150})
-        if not opt.success or not np.all(np.isfinite(opt.x)):
-            raise RuntimeError(f"Probe {j} did not converge: {opt.message}")
-        weights[j] = [opt.x[0] / scale, opt.x[1]]
+        params, retried = _fit_logistic_probe(z, target, w, j)
+        retries += retried
+        weights[j] = [params[0] / scale, params[1]]
+    if retries:
+        print(f"Validated all probes; {retries} needed the fallback solver.")
     return weights
 
 
