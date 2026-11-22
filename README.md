@@ -4,16 +4,17 @@ Run these in **Google Colab in your browser**, in this order. You can keep the d
 
 | Order | Notebook | What it does | GPU |
 |---|---|---|---|
-| 1 | [Extract activations](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/kan-sae-training/01_extract_activations_to_drive.ipynb) | Downloads weather data, runs GraphCast, saves layer-8 activations to Drive | A100 or H100 |
-| 2 | [Train TopK SAE](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/kan-sae-training/02_train_topk_sae.ipynb) | Finds those activations, trains the authors' SAE class, saves weights and a loss plot | T4 or larger |
-| 2b | [Train KAN-SAE](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/kan-sae-training/02b_train_kan_sae.ipynb) | Reuse the exact TopK split, calibrate splines, and train a separate resumable KAN-SAE | T4 or larger |
-| 3 | [Prepare cyclone examples](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/kan-sae-training/03_prepare_cyclone_examples.ipynb) | Run the same frozen GraphCast at exact mask hours and pair each layer-8 row with its mesh label | A100 or H100 |
-| 4 | [Probe SAE features](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/kan-sae-training/04_probe_topk_cyclones.ipynb) | Load the selected TopK or KAN checkpoint, fit signed probes, choose on validation F1, and evaluate on held-out storms | T4 or larger |
-| 5 | [Plot Ida and Hagibis](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/kan-sae-training/05_plot_cyclone_features.ipynb) | Read notebook 4’s selected feature and draw the ten storm snapshots from Figure 4B–C with matching ERA5 winds | A100 or H100 |
+| 1 | [Extract activations](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/kan-topk-training/01_extract_activations_to_drive.ipynb) | Downloads weather data, runs GraphCast, saves layer-8 activations to Drive | A100 or H100 |
+| 2 | [Train TopK SAE](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/kan-topk-training/02_train_topk_sae.ipynb) | Finds those activations, trains the authors' SAE class, saves weights and a loss plot | T4 or larger |
+| 2b | [Train KAN-SAE](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/kan-topk-training/02b_train_kan_sae.ipynb) | Reuse the exact TopK split, calibrate splines, and train a separate resumable KAN-SAE | T4 or larger |
+| 2c | [Train KAN + TopK](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/kan-topk-training/02c_train_kan_topk_sae.ipynb) | Reuse the TopK split, warm up splines, then train with at most 32 signed features per input | T4 or larger |
+| 3 | [Prepare cyclone examples](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/kan-topk-training/03_prepare_cyclone_examples.ipynb) | Run the same frozen GraphCast at exact mask hours and pair each layer-8 row with its mesh label | A100 or H100 |
+| 4 | [Probe SAE features](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/kan-topk-training/04_probe_topk_cyclones.ipynb) | Load the selected TopK, KAN, or KAN + TopK checkpoint, fit signed probes, choose on validation F1, and evaluate on held-out storms | T4 or larger |
+| 5 | [Plot Ida and Hagibis](https://colab.research.google.com/github/observerhan/graphcast-interpretability/blob/kan-topk-training/05_plot_cyclone_features.ipynb) | Read notebook 4’s selected feature and draw the ten storm snapshots from Figure 4B–C with matching ERA5 winds | A100 or H100 |
 
 ### Where the code lives
 
-The six notebooks are the Colab entry points. Shared GraphCast code is stored as ordinary Python files in the repository, so you can read it directly in GitHub or VS Code.
+The seven notebooks are the Colab entry points. Shared GraphCast code is stored as ordinary Python files in the repository, so you can read it directly in GitHub or VS Code.
 
 | Location | Responsibility |
 |---|---|
@@ -22,22 +23,25 @@ The six notebooks are the Colab entry points. Shared GraphCast code is stored as
 | [`src/graphcast_interpretability/model.py`](src/graphcast_interpretability/model.py) | The authors' unchanged TopK SAE class |
 | [`src/graphcast_interpretability/kan_sae.py`](src/graphcast_interpretability/kan_sae.py) | KAN-SAE model, spline calibration, L1 loss, and decoder normalization |
 | [`scripts/train_kan_sae.py`](scripts/train_kan_sae.py) | Exact baseline split, training-only calibration, KAN optimization, and completed-epoch resume |
-| [`scripts/sae_checkpoint.py`](scripts/sae_checkpoint.py) | Load KAN or legacy TopK checkpoints and preserve their feature values |
+| [`src/graphcast_interpretability/kan_topk_sae.py`](src/graphcast_interpretability/kan_topk_sae.py) and [`scripts/train_kan_topk_sae.py`](scripts/train_kan_topk_sae.py) | Signed spline + magnitude TopK model, warm-up, auxiliary loss, and resumable training |
+| [`scripts/sae_checkpoint.py`](scripts/sae_checkpoint.py) | Load KAN + TopK, KAN, or legacy TopK checkpoints and preserve their feature values |
 | [`02_train_topk_sae.ipynb`](02_train_topk_sae.ipynb) | Training settings, batching, loss, optimizer, checkpoints, and learning curves |
 | [`scripts/collect_cyclone_activations.py`](scripts/collect_cyclone_activations.py) | Run the shared extractor at labeled cyclone times |
 | [`scripts/cyclone_data.py`](scripts/cyclone_data.py) and [`data/cyclone_2019_2021/`](data/cyclone_2019_2021/) | Label loading, fixed schedules, mesh labels, and data provenance |
 | [`scripts/cyclone_probes.py`](scripts/cyclone_probes.py) | Fit, select, and evaluate the per-feature logistic probes |
 | [`scripts/collect_figure4_storms.py`](scripts/collect_figure4_storms.py) and [`scripts/figure4_storms.py`](scripts/figure4_storms.py) | Collect the storm examples, encode the selected feature, and draw the maps |
 
-All six notebooks load the same pinned project revision. Notebooks 01, 03, and 05 call the checked-in setup and extraction scripts directly. Notebook 02 imports the SAE from `src/` in that same checkout. Existing Drive datasets, checkpoints, probe selections, and storm caches remain usable; the reorganization does not require collecting or training them again. Saved outputs and execution counts in the six workflow notebooks have been cleared for a fresh Colab run.
+Notebooks **02c, 04, and 05** share a pinned revision containing KAN + TopK. The unchanged notebooks 01, 02, 02b, and 03 retain their previous code pin and executed results. Their activation files and saved models are compatible with the new workflow. Outputs in 04 and 05 are cleared on this branch for the new experiment; the executed KAN notebooks remain on `kan-sae-training`.
+
+**To run the new experiment:** open **02c → 04 → 05** using the links above. Use a T4 or larger for training/probing and the existing plotting GPU setup for 05. The defaults are 4,096 features, `k=32`, and 20 epochs including one dense warm-up. Only sparse-training epochs can become `best.pt`. The run is saved separately in `kan_topk_runs/kan_topk_k32`, and notebooks 04 and 05 default to `SAE_TYPE='kan_topk'`. Reuse the data already saved by 01, 03, and 05. See [the KAN + TopK experiment guide](docs/kan_topk.md) for the training objective, diagnostics, and comparison limits.
 
 See [the workflow guide](docs/workflow.md) for the import paths, local checks, and the parts we can reuse for KAN-SAE.
 
-**To continue with KAN-SAE after running the existing baseline:** open notebook **02b**, then notebook **04**, then optionally notebook **05**. Existing activation files from 01 and 03 can be reused. Notebooks 04 and 05 default to `SAE_TYPE='kan_sae'` and `kan_baseline`; select `topk` to use `topk_baseline` instead. A blank `SAE_RUN` chooses that model's baseline run name.
+**To continue with KAN-SAE after running the existing baseline:** open notebook **02b**, then notebook **04**, then optionally notebook **05**. Existing activation files from 01 and 03 can be reused. In notebooks 04 and 05 select `SAE_TYPE='kan_sae'` to use `kan_baseline`, or `topk` to use `topk_baseline`; this branch defaults to `kan_topk`. A blank `SAE_RUN` chooses that model's baseline run name.
 
 KAN training reuses notebook 02's exact data split and file checksums. The default run is 20 epochs, 4,096 features, batch size 256, and Adam at `1e-4`, with L1 increasing from `5e-5` to `1e-4` over a fixed 20-epoch ramp. Results are saved separately under `monthly_2017_2018/kan_runs/kan_baseline`. Increase `EPOCHS` to continue; keep the other settings unchanged or choose a new run name. See [the KAN training and probing guide](docs/kan_sae.md#colab-training-and-probing) for outputs, resume behavior, and signed-feature handling.
 
-Connect the **same Google Drive account** in all six notebooks. Notebooks 1 and 2 save their experiment under **My Drive → AMS691_GraphCast → monthly_2017_2018**. No terminal commands, local installation, manually downloaded weather files, or activation-path editing are needed.
+Connect the **same Google Drive account** in all notebooks. Notebooks 1 and 2 save their experiment under **My Drive → AMS691_GraphCast → monthly_2017_2018**. No terminal commands, local installation, manually downloaded weather files, or activation-path editing are needed.
 
 The defaults extract **27 snapshots at 12:00 UTC** (about **2.3 GB** of activations). The **24 training snapshots** use the 15th of every month in 2017 and 2018. We add **3 validation snapshots** on August 29, 2017, April 29, 2018, and December 29, 2018. The count is 10% of the number of training dates, rounded up. Notebook 2 checks reconstruction across those three dates after every epoch. Notebooks 3 and 4 use separate, labeled 2019–2021 storms for cyclone F1.
 
@@ -51,7 +55,7 @@ Results are in `AMS691_GraphCast/monthly_2017_2018/topk_runs/topk_baseline`: `be
 
 ### Labeled cyclone experiment
 
-The `kan-sae-training` branch includes the activation, training, cyclone-probe, and storm-plotting workflows. If the labeled activations do not exist yet, run notebook 3. Before notebook 4, train KAN with notebook 02b or select `SAE_TYPE='topk'` to use your existing baseline. Its default selects 12 snapshots from 2019 to fit probes, 8 from 2020 to choose the feature and cutoff, and 8 from 2021 to measure test F1. It saves about 2.35 GB in `AMS691_GraphCast/cyclones_2019_2021` and resumes completed timestamps. Both notebooks also support the 93-snapshot `all_guarded` schedule. Use the same setting in both.
+The `kan-topk-training` branch includes the activation, training, cyclone-probe, and storm-plotting workflows. If the labeled activations do not exist yet, run notebook 3. Before notebook 4, train the hybrid with notebook 02c, select `SAE_TYPE='kan_sae'` for notebook 02b's run, or select `topk` for your existing baseline. Its default selects 12 snapshots from 2019 to fit probes, 8 from 2020 to choose the feature and cutoff, and 8 from 2021 to measure test F1. It saves about 2.35 GB in `AMS691_GraphCast/cyclones_2019_2021` and resumes completed timestamps. Both notebooks also support the 93-snapshot `all_guarded` schedule. Use the same setting in both.
 
 **What was counted.** The cleaned release has 697 timestamped maps in 2019–2021. Taking the union of the two annotators, 452 maps contain at least one cyclone, totaling 769 connected footprints. Counting diagonals and wrapping longitude follows the dataset’s region definition. At the four exact GraphCast hours there are 117 maps, 77 positive maps, and 125 footprints. The mask files have no persistent storm IDs. In an independent check, 671 of the 769 footprints contained an interpolated NOAA IBTrACS main-track center, representing 206 distinct IDs.
 

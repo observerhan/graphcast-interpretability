@@ -2,7 +2,7 @@
 
 The model is implemented in [`src/graphcast_interpretability/kan_sae.py`](../src/graphcast_interpretability/kan_sae.py). It follows the encoder and decoder equations in Minjong Cheon's [KAN-SAE paper, arXiv:2605.17493v1](https://arxiv.org/abs/2605.17493v1), Section 4.1 and Algorithm 1. The uploaded paper applies this model to SONNY; this repository adapts it to our saved GraphCast activations.
 
-Notebook 02b now trains this model on the exact activation split saved by TopK. Notebooks 04 and 05 load either model and handle signed KAN features. All six entry points pin the same source revision. See [Colab training and probing](#colab-training-and-probing) below.
+Notebook 02b trains this model on the exact activation split saved by TopK. Notebooks 04 and 05 load the selected model and handle signed KAN features. On the `kan-topk-training` branch they default to the separate hybrid: choose `SAE_TYPE='kan_sae'` for the L1 model documented here. Notebook 02b retains its original code pin and training calculation; 02c, 04 and 05 share the hybrid release. See [the hybrid guide](kan_topk.md) or [L1 KAN training and probing](#colab-training-and-probing) below.
 
 ## What the model calculates
 
@@ -131,7 +131,7 @@ The model tests compare spline values and derivatives with SciPy's independent `
 Run the Colab links in the branch README in this order:
 
 1. **02b_train_kan_sae.ipynb** trains KAN-SAE. It requires the `data_split.json` from your existing `topk_runs/topk_baseline` run and checks the exact files and SHA-256 hashes. It does not regenerate GraphCast activations.
-2. **04_probe_topk_cyclones.ipynb** supports both models despite its historical filename. Its default `SAE_TYPE='kan_sae'` and blank `SAE_RUN` select `kan_baseline`. Select `topk` for `topk_baseline`; enter a custom run name if needed. Reuse the labeled activations from notebook 03.
+2. **04_probe_topk_cyclones.ipynb** supports all three models despite its historical filename. Select `SAE_TYPE='kan_sae'` with blank `SAE_RUN` for `kan_baseline`, or `topk` for `topk_baseline`; enter a custom run name if needed. The hybrid branch defaults to `kan_topk`. Reuse the labeled activations from notebook 03.
 3. **05_plot_cyclone_features.ipynb** uses the same model settings and the probe's saved feature selection. Existing storm snapshots can be reused. KAN maps keep both signs and use a common symmetric color scale across each storm's five dates.
 
 ### Training settings and resume

@@ -74,7 +74,7 @@ def open_experiment(root, data_dir, cohort, checkpoint_path):
     if (saved["data_signature"] != training_split["data_signature"] or
             set(saved["validation_dates"]) != set(training_split["validation_dates"])):
         raise ValueError("The checkpoint and data_split.json are from different training runs.")
-    if saved.get("model_type") == "kan_sae" and saved.get("data_split") != training_split:
+    if saved.get("model_type") in {"kan_sae", "kan_topk"} and saved.get("data_split") != training_split:
         raise ValueError("The KAN checkpoint's recorded split differs from data_split.json.")
     cfg = saved["config"]
     if cfg["d_in"] != manifest["source"]["shape"][1]:
@@ -83,17 +83,17 @@ def open_experiment(root, data_dir, cohort, checkpoint_path):
     model = load_model(saved, device)
     model.requires_grad_(False).eval().to(device)
     identity = dict(checkpoint_sha256=sha256(checkpoint_path),
-                    checkpoint_epoch=int(saved["epoch"]), latent=cfg["latent"], k=cfg.get("k"),
+                    checkpoint_epoch=int(saved["epoch"]), latent=cfg["latent"], k=cfg.get("k", cfg.get("k_active")),
                     cohort=cohort, dataset_manifest_sha256=sha256(manifest_path), ridge=RIDGE)
     # Keep old TopK selection identities usable; KAN records its different type.
-    if saved.get("model_type") == "kan_sae":
-        identity.update(model_type="kan_sae", probe_version=2)
+    if saved.get("model_type") in {"kan_sae", "kan_topk"}:
+        identity.update(model_type=saved["model_type"], probe_version=2)
     return model, device, manifest, labels, identity
 
 
 def encode_split(role, root, manifest, labels, model, device, batch_size=256, cache_dir=None,
                  selected_feature=None):
-    """Keep exact signed codes. KAN uses local disk; TopK uses sparse RAM storage."""
+    """Keep exact signed codes. Dense KAN uses disk; both TopK models use sparse RAM."""
     import torch
     from sae_checkpoint import feature_codes, model_type
 

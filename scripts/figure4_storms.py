@@ -62,7 +62,7 @@ def encode_storms(label_root, data_dir, cohort, checkpoint, cache, out):
     selection, _ = saved_selection(label_root, cohort, checkpoint)
     model, device, manifest, _, identity = open_experiment(
         Path(label_root), Path(data_dir), cohort, Path(checkpoint))
-    signed = model_type(model) == "kan_sae"
+    signed = model_type(model) in {"kan_sae", "kan_topk"}
     if selection["experiment"] != identity:
         raise ValueError("Notebook 04's saved selection does not match this SAE run.")
     collected = json.loads((Path(cache) / "dataset.json").read_text())
@@ -121,7 +121,7 @@ def encode_storms(label_root, data_dir, cohort, checkpoint, cache, out):
 
 def feature_color_limits(features, kind):
     """One scale across each storm's five dates; signed KAN maps center on zero."""
-    if kind == "kan_sae":
+    if kind in {"kan_sae", "kan_topk"}:
         limit = max(max(float(np.max(np.abs(field))) for field in features), 1e-6)
         return -limit, limit
     return 0., max(max(float(np.max(field)) for field in features), 1e-6)
@@ -142,10 +142,10 @@ def draw_storms(cache, out):
     collected = json.loads((cache / "dataset.json").read_text())
     feature = int(metadata["selection"]["feature"])
     kind = metadata["experiment"].get("model_type", "topk")
-    model_label = "KAN-SAE" if kind == "kan_sae" else "TopK SAE"
+    model_label = {"kan_sae": "KAN-SAE", "topk": "TopK SAE", "kan_topk": "KAN + TopK SAE"}[kind]
     colors = plt.get_cmap("YlGnBu")(np.linspace(0, 1, 256))
     colors[0] = [1, 1, 1, 1]
-    feature_cmap = plt.get_cmap("RdBu_r") if kind == "kan_sae" else ListedColormap(colors)
+    feature_cmap = plt.get_cmap("RdBu_r") if kind in {"kan_sae", "kan_topk"} else ListedColormap(colors)
     outputs, scales = [], {}
     for storm in STORMS:
         mapping_record = collected["mappings"][storm["key"]]
