@@ -64,39 +64,3 @@ Notebook 4 writes the zero-based feature ID, its inclusive cutoff and validation
 Notebook 5 produces the Ida and Hagibis panels from Figure 4B–C using the feature saved by notebook 4. The earlier TopK course result selected feature 3288 with validation F1 0.252023 and test F1 0.380000. It collects five Ida snapshots from August 28–30, 2021 at 12-hour intervals, and five Hagibis snapshots from October 5–13, 2019 at 48-hour intervals. The ten timestamps match the figure. Each map uses the initialization-time convention from notebook 3, with ERA5 10 m winds at that same time. The source figure’s exact input-versus-target time convention is ambiguous in the paper, and the saved metadata states our convention explicitly.
 
 Use the same `COHORT`, `SAE_TYPE`, `SAE_RUN` and `SAE_EXPERIMENT` settings as notebook 4. KAN maps preserve signs with symmetric color limits centered on zero. The ten new activation files occupy about 0.84 GB, with completed files reused after a disconnect. The plotting script uses the authors’ containing-triangle mesh-to-grid mapping and shares each row’s color scale across its five dates. PNG and PDF panels plus `figure4_metadata.json` are saved in the selected probe run’s `figure4_storms` folder. The regional windows are 100–70°W, 15–40°N for Ida and 120–165°E, 5–45°N for Hagibis.
-
-The original four-snapshot Ida run is available in the branch history. Its activation and model folders in Drive are separate from the monthly experiment.
-
----
-
-## Original project information
-
-# GraphCast Interpretability
-
-This repository contains code and utilities accompanying the paper:
-
-> **MacMillan, T. & Ouellette, N. T. (2025)**  
-> [Towards mechanistic understanding in a data-driven weather model: internal activations reveal interpretable physical features](https://arxiv.org/abs/2512.24440)
-> *(submitted / under review)*
-
-The focus of this codebase is **mechanistic interpretability of DeepMind’s GraphCast weather model**, using sparse autoencoders (SAEs) to identify physically meaningful features in intermediate GraphCast representations.
-
-Some fun features to look at include the hurricane tracking feature
-
-![Feature 3243 aligned with a tropical cyclone](figures/hurricane_single.png)
-
-Or the Pineapple express
-
-![Feature 1820 aligned with an atmospheric river](figures/ar_single.png)
-
-
-The primary runnable artifact at present is a **Google Colab notebook** that reproduces a key hurricane case study from the paper. Other components are utilities and scripts used during large-scale analysis on HPC systems. We are working to publish these as well.
-
----
-## Quick start
-
-Click the Colab link below to reproduce a hurricane example from the paper:
-
-[Demo notebook](https://colab.research.google.com/github/theodoremacmillan/graphcast-interpretability/blob/main/hurricane_feature_demo.ipynb) in Colab 
-
-Due to Colab updating their Jax package version, you'll have to switch the runtime version to 2025.07 instead of 'Latest'. It is recommended to run the Colab on an A100 or H100 as the activation steps consume considerable GPU memory.
