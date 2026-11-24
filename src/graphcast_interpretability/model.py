@@ -119,7 +119,7 @@ def topk(x, k: int):
 
 
 class SAE(nn.Module):
-    """Top-K Sparse Autoencoder with AuxK loss (OpenAI recipe)."""
+    """Top-K Sparse Autoencoder with AuxK loss."""
     def __init__(self, d_in, latent, k_active, k_aux,
                  unit_norm_decoder=True, dead_window=3_000_000):
         super().__init__()
@@ -139,7 +139,7 @@ class SAE(nn.Module):
         self.register_buffer("miss_counts", torch.zeros(latent, dtype=torch.long))
         self.register_buffer("dead_mask", torch.zeros(latent, dtype=torch.bool))
 
-        # --- OpenAI-style initialization ---
+        #
         with torch.no_grad():
             # 1. Randomly initialize decoder (dictionary) and normalize columns
             torch.nn.init.normal_(self.dec.weight, mean=0.0, std=1.0)
