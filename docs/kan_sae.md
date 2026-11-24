@@ -1,6 +1,6 @@
 # KAN-SAE model for GraphCast
 
-The model is implemented in [`src/graphcast_interpretability/kan_sae.py`](../src/graphcast_interpretability/kan_sae.py). It follows the encoder and decoder equations in Minjong Cheon's [KAN-SAE paper, arXiv:2605.17493v1](https://arxiv.org/abs/2605.17493v1), Section 4.1 and Algorithm 1. The uploaded paper applies this model to SONNY; this repository adapts it to our saved GraphCast activations.
+The model is implemented in [`src/graphcast_interpretability/kan_sae.py`](../src/graphcast_interpretability/kan_sae.py). It follows the encoder and decoder equations in Minjong Cheon's [KAN-SAE paper, arXiv:2605.17493v1](https://arxiv.org/abs/2605.17493v1), Section 4.1 and Algorithm 1. That paper applies this model to SONNY; this repository adapts it to our saved GraphCast activations.
 
 Notebook 02b now trains this model on the exact activation split saved by TopK. Notebooks 04 and 05 load either model and handle signed KAN features. All six entry points pin the same source revision. See [Colab training and probing](#colab-training-and-probing) below.
 
